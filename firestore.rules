@@ -1,0 +1,93 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    // --- User Profiles ---
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow create: if isOwner(userId) && isValidUser(incoming());
+      allow update: if isOwner(userId) && (
+        (incoming().keys().hasOnly(['lastLogin']) && incoming().lastLogin == request.time) ||
+        (incoming().keys().hasOnly(['purchaseStatus']) && incoming().purchaseStatus is bool) ||
+        isValidUser(incoming())
+      );
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['email', 'uid', 'role', 'deviceId', 'createdAt', 'name']) && 
+             data.email is string && data.email.size() <= 200 &&
+             data.uid == request.auth.uid &&
+             data.role in ['patient', 'admin'] &&
+             data.deviceId is string &&
+             data.name is string &&
+             (data.purchaseStatus == null || data.purchaseStatus is bool);
+    }
+
+    // --- Connectivity Test ---
+    match /test/connection {
+      allow read: if true;
+    }
+
+    // --- Orders ---
+    match /orders/{orderId} {
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && 
+                      incoming().userId == request.auth.uid && 
+                      isValidOrder(incoming());
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll(['userId', 'productId', 'amount', 'status', 'createdAt']) &&
+             data.userId is string && data.userId == request.auth.uid &&
+             data.productId is string && data.productId.size() <= 100 &&
+             data.amount is number && data.amount > 0 &&
+             data.status == 'completed' &&
+             data.createdAt == request.time;
+    }
+
+    // --- Reviews ---
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if isSignedIn() && 
+                      incoming().userId == request.auth.uid && 
+                      isValidReview(incoming());
+      allow update: if isSignedIn() && 
+                      resource.data.userId == request.auth.uid && 
+                      incoming().userId == request.auth.uid &&
+                      isValidReview(incoming());
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    function isValidReview(data) {
+      return data.keys().hasAll(['userId', 'userName', 'rating', 'comment', 'productId', 'createdAt']) &&
+             data.userId == request.auth.uid &&
+             data.userName is string && data.userName.size() <= 100 &&
+             data.rating is number && data.rating >= 1 && data.rating <= 5 &&
+             data.comment is string && data.comment.size() <= 1000 &&
+             data.productId is string && data.productId.size() <= 100 &&
+             data.createdAt == request.time;
+    }
+  }
+}

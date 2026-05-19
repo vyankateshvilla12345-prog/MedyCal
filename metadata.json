@@ -1,0 +1,8 @@
+{
+  "name": "MedyCal",
+  "description": "Smart Health Monitoring for Everyday Care. A premium e-commerce landing page for the MedyCal health monitoring box.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
